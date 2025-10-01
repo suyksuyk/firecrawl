@@ -27,26 +27,26 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push images using docker-compose
+      - name: Build images using docker-compose
+        run: |
+          docker-compose build
+
+      - name: Tag and push images
         run: |
           # Get list of services from docker-compose.yml
           services=$(docker-compose config --services)
           echo "Services found: $services"
 
-          # Build each service
           for service in $services; do
-            echo "Building service: $service"
-            docker-compose build $service
-
-            # Get the image name from docker-compose
-            image_name=$(docker-compose images | grep "$service" | awk '{print $2}')
+            # Get the image name from docker-compose for the service
+            image_name=$(docker-compose images --quiet $service)
             if [ -z "$image_name" ]; then
-              # Fallback: if image name not found, use a default pattern
-              image_name="firecrawl_$service"
+              echo "Warning: Could not get image name for service $service, skipping"
+              continue
             fi
 
-            # Tag and push
-            new_tag="${{ secrets.REGISTRY_URL }}/firecrawl-$service:latest"
+            # Define the new tag with registry, namespace, and service name
+            new_tag="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/firecrawl-$service:latest"
             echo "Tagging $image_name to $new_tag"
             docker tag "$image_name" "$new_tag"
             docker push "$new_tag"
