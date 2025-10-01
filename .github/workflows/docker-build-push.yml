@@ -68,31 +68,35 @@ jobs:
 
       - name: Tag and push images
         run: |
-          services=("api" "playwright" "nuq-postgres")
-          
-          for service in "${services[@]}"; do
-            local_image="firecrawl-$service:latest"
-            remote_image="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/firecrawl-$service:latest"
-            
-            echo "📦 Tagging $local_image to $remote_image"
-            docker tag $local_image "$remote_image"
+          # 键=服务名，值=镜像名（与 compose 里 image 字段保持一致）
+          declare -A map=(
+            ["api"]="firecrawl-api"
+            ["playwright-service"]="firecrawl-playwright"
+            ["nuq-postgres"]="firecrawl-nuq-postgres"
+          )
+
+          for svc in "${!map[@]}"; do
+            local_image="${map[$svc]}:latest"
+            remote_image="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/${map[$svc]}:latest"
+
+            echo "📦 Tagging $local_image  ->  $remote_image"
+            docker tag "$local_image" "$remote_image"
             docker push "$remote_image"
-            echo "✅ Successfully pushed $remote_image"
+            echo "✅ Pushed $remote_image"
           done
 
       - name: Verify pushed images
         run: |
-          services=("api" "playwright-service" "nuq-postgres")
-          
-          for service in "${services[@]}"; do
-            remote_image="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/firecrawl-$service:latest"
-            echo "🔍 Verifying $remote_image"
-            if docker pull "$remote_image"; then
-              echo "✅ Successfully pulled $remote_image"
-            else
-              echo "❌ Warning: Could not pull $remote_image"
-              exit 1
-            fi
+          images=(
+            "firecrawl-api"
+            "firecrawl-playwright"
+            "firecrawl-nuq-postgres"
+          )
+          for img in "${images[@]}"; do
+            remote="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/${img}:latest"
+            echo "🔍 Verifying $remote"
+            docker pull "$remote" || { echo "❌ Could not pull $remote"; exit 1; }
+            echo "✅ $remote pulled successfully"
           done
 
       - name: Success notification
