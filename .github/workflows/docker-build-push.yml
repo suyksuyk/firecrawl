@@ -68,7 +68,7 @@ jobs:
 
       - name: Tag and push images
         run: |
-          services=("api" "playwright-service" "nuq-postgres")
+          services=("api" "playwright" "nuq-postgres")
           
           for service in "${services[@]}"; do
             local_image="firecrawl-$service:latest"
