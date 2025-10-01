@@ -1,53 +1,73 @@
-name: Build and Push Docker Images
+name: Build and Push Firecrawl Images
 
 on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  REGISTRY: ${{ secrets.REGISTRY_URL }}
+  NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Install Docker Compose
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
 
-      - name: Log in to private registry
-        uses: docker/login-action@v2
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ secrets.REGISTRY_URL }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build images using docker-compose
+      - name: Build images with docker-compose
         run: |
+          # 构建所有镜像
           docker-compose build
+          echo "Docker images built successfully"
 
       - name: Tag and push images
         run: |
-          # Get list of services from docker-compose.yml
-          services=$(docker-compose config --services)
-          echo "Services found: $services"
-
-          for service in $services; do
-            # Get the image name from docker-compose for the service
-            image_name=$(docker-compose images --quiet $service)
-            if [ -z "$image_name" ]; then
-              echo "Warning: Could not get image name for service $service, skipping"
-              continue
-            fi
-
-            # Define the new tag with registry, namespace, and service name
-            new_tag="${{ secrets.REGISTRY_URL }}/${{ secrets.REGISTRY_NAMESPACE }}/firecrawl-$service:latest"
-            echo "Tagging $image_name to $new_tag"
-            docker tag "$image_name" "$new_tag"
-            docker push "$new_tag"
+          # 定义需要推送的服务列表
+          services=("api" "playwright-service" "nuq-postgres")
+          
+          for service in "${services[@]}"; do
+            # 为每个服务打标签并推送
+            local_image="firecrawl-$service:latest"
+            remote_image="$REGISTRY/$NAMESPACE/firecrawl-$service:latest"
+            
+            echo "Tagging $local_image to $remote_image"
+            docker tag $local_image $remote_image
+            docker push $remote_image
+            echo "Successfully pushed $remote_image"
           done
+
+      - name: Verify pushed images
+        run: |
+          # 验证镜像是否已推送
+          services=("api" "playwright-service" "nuq-postgres")
+          
+          for service in "${services[@]}"; do
+            remote_image="$REGISTRY/$NAMESPACE/firecrawl-$service:latest"
+            echo "Verifying $remote_image"
+            docker pull $remote_image && echo "Successfully pulled $remote_image" || echo "Warning: Could not pull $remote_image"
+          done
+
+      - name: Success notification
+        run: |
+          echo "🎉 All Docker images built and pushed successfully!"
+          echo "📦 Images pushed to: $REGISTRY/$NAMESPACE"
+          echo "🔗 Services: api, playwright-service, nuq-postgres"
